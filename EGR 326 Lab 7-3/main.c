@@ -1,4 +1,7 @@
 #include "msp.h"
+#include "wstep.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 #define LED2_RED BIT0
 #define LED2_GREEN BIT1
@@ -7,14 +10,17 @@
 #define SLAVE_ADDRESS 0x48
 
 char RXData;
+int readData[3];
+int count = 0;
 
 void main(void){
 
     WDT_A->CTL = WDT_A_CTL_PW | WDT_A_CTL_HOLD;
 
-    P2->DIR = LED2_RED|LED2_GREEN|LED2_BLUE;
-    P2->OUT = 0x00;
     P1->SEL0 |= BIT6 | BIT7;                // P1.6 and P1.7 as UCB0SDA and UCB0SCL
+
+    initWhiteStepper();
+    SysTickInit();
 
     EUSCI_B0->CTLW0 |= EUSCI_B_CTLW0_SWRST;      // Hold EUSCI_B0 module in reset state
     EUSCI_B0->CTLW0 |= EUSCI_B_CTLW0_MODE_3|EUSCI_B_CTLW0_SYNC;
@@ -26,31 +32,38 @@ void main(void){
     NVIC->ISER[0] = 0x00100000;                 // EUSCI_B0 interrupt is enabled in NVIC
     __enable_irq();                  // All interrupts are enabled
 
-    SCB->SCR |= SCB_SCR_SLEEPONEXIT_Msk;         // Sleep on exit
-    __sleep();                  // enter LPM0
+    int value = 0;
+    int dir = 0; //0 for positive, 1 for negative
+    int position = 0;
+
+    while(1) {
+        if(count == 3) {
+            if(readData[0] == 45) {
+                value = -4 * ((readData[1] - 48)*10 + (readData[2] - 48));
+                dir = 1; //Negative rotation
+            }
+            else {
+                value = 4 * ((readData[1] - 48)*10 + (readData[2] - 48));
+                dir = 0; //Positive rotation
+            }
+
+            position += value;
+            step(abs(value), dir);
+            printf("%d\n", position);
+            count = 0;
+        }
+    }
 }
 
 void EUSCIB0_IRQHandler(void){
-    uint32_t status         = EUSCI_B0->IFG;         // Get EUSCI_B0 interrupt flag
+    uint32_t status = EUSCI_B0->IFG;         // Get EUSCI_B0 interrupt flag
     EUSCI_B0->IFG  &=~ EUSCI_B_IFG_RXIFG0;      // Clear EUSCI_B0 RX interrupt flag
 
     if(status & EUSCI_B_IFG_RXIFG0){             // Check if receive interrupt occurs
-           RXData = EUSCI_B0->RXBUF;         // Load current RXData value to transmit buffer
+        RXData = EUSCI_B0->RXBUF;         // Load current RXData value to transmit buffer
 
-        if (RXData == 'R'){
-            P2->OUT |= LED2_RED;         // Toggle P2.0 if 'R' is received
-            P2->OUT &= ~LED2_GREEN;
-            P2->OUT &= ~LED2_BLUE;
-        }
-        else if(RXData == 'G'){
-            P2->OUT |= LED2_GREEN;    // Toggle P2.1 if 'G' is received
-            P2->OUT &= ~LED2_RED;
-            P2->OUT &= ~LED2_BLUE;
-        }
-        else if(RXData == 'B'){
-            P2->OUT |= LED2_BLUE;    // Toggle P2.2 if 'B' is received
-            P2->OUT &= ~LED2_GREEN;
-            P2->OUT &= ~LED2_RED;
-        }
+        //printf("%d\n", RXData);
+        readData[count] = RXData;
     }
+    count++;
 }
