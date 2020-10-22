@@ -3,10 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define LED2_RED BIT0
-#define LED2_GREEN BIT1
-#define LED2_BLUE BIT2
-
 #define SLAVE_ADDRESS 0x48
 
 char RXData;
@@ -51,6 +47,7 @@ void main(void){
             step(abs(value), dir);
             printf("%d\n", position);
             count = 0;
+
         }
     }
 }
